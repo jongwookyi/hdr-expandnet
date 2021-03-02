@@ -296,7 +296,7 @@ def index_gauss(
         for key, center in centers.items()
     }
     ends = {key: start + crop_size[key] for key, start in starts.items()}
-    return np.s_[starts['h'] : ends['h'], starts['w'] : ends[' w '], :]
+    return np.s_[starts['h'] : ends['h'], starts['w'] : ends['w'], :]
 
 
 def slice_gauss(
