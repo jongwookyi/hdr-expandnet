@@ -1,4 +1,3 @@
-from __future__ import division, print_function
 import argparse
 import os
 import numpy as np
@@ -16,17 +15,18 @@ from util import (
     resize,
     tone_map,
     create_tmo_param_from_args,
+    imread_raw,
 )
 
 
 def get_args():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     arg = parser.add_argument
-    arg('ldr', nargs='+', type=process_path, help='Ldr image(s)')
+    arg('ldr', nargs='*', type=process_path, default=['ldr_input'], help='Ldr image(s)')
     arg(
         '--out',
         type=lambda x: process_path(x, True),
-        default=None,
+        default='hdr_output',
         help='Output location.',
     )
     arg(
@@ -85,7 +85,7 @@ def get_args():
         '--ldr_extensions',
         nargs='+',
         type=str,
-        default=['.jpg', '.jpeg', '.tiff', '.bmp', '.png'],
+        default=['.jpg', '.jpeg', '.tiff', '.bmp', '.png', '.raw'],
         help='Allowed LDR image extensions',
     )
     opt = parser.parse_args()
@@ -93,9 +93,10 @@ def get_args():
 
 
 def load_pretrained(opt):
+    device = torch.device("cuda" if opt.use_gpu and torch.cuda.is_available() else "cpu")
     net = ExpandNet()
     net.load_state_dict(
-        torch.load(opt.use_weights, map_location=lambda s, l: s)
+        torch.load(opt.use_weights, map_location=device)
     )
     net.eval()
     return net
@@ -187,10 +188,15 @@ def create_images(opt):
             for f in os.listdir(opt.ldr[0])
             if any(f.lower().endswith(x) for x in opt.ldr_extensions)
         ]
+    print("LDR input:", opt.ldr)
     for ldr_file in opt.ldr:
-        loaded = cv2.imread(
-            ldr_file, flags=cv2.IMREAD_ANYDEPTH + cv2.IMREAD_COLOR
-        )
+        input_extension = os.path.splitext(ldr_file)[-1].lower()
+        if input_extension == '.raw':
+            loaded = imread_raw(ldr_file)
+        else:
+            loaded = cv2.imread(
+                ldr_file, flags=cv2.IMREAD_ANYDEPTH + cv2.IMREAD_COLOR
+            )
         if loaded is None:
             print('Could not load {0}'.format(ldr_file))
             continue

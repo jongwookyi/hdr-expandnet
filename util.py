@@ -5,6 +5,15 @@ import torch
 from torch.utils.data import Dataset
 import cv2
 
+import glob
+from pathlib import Path
+import sys
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+import pydicom
+from pydicom.pixel_data_handlers.util import apply_modality_lut, apply_voi_lut
+import tifffile as tiff
+
 
 def process_path(directory, create=False):
     directory = os.path.expanduser(directory)
@@ -182,10 +191,10 @@ TRAIN_TMO_DICT = {
 }
 
 
-def random_tone_map(x):
-    tmos = list(TRAIN_TMO_DICT.keys())
+def random_tone_map(x, tmo_dict=TRAIN_TMO_DICT):
+    tmos = list(tmo_dict.keys())
     choice = np.random.randint(0, len(tmos))
-    tmo = TRAIN_TMO_DICT[tmos[choice]](randomize=True)
+    tmo = tmo_dict[tmos[choice]](randomize=True)
     return map_range(tmo(x))
 
 
@@ -242,7 +251,6 @@ def index_gauss(
         - If `ratio` is None then the resulting ratio can be anything.
         - If `random_size` is False and `ratio` is not None, the largest dimension
           dictated by the ratio is adjusted accordingly:
-                
                 - `crop_size` is (w=100, h=10) and `ratio` = 9 ==> (w=90, h=10)
                 - `crop_size` is (w=100, h=10) and `ratio` = 0.2 ==> (w=100, h=20)
 
@@ -296,7 +304,7 @@ def index_gauss(
         for key, center in centers.items()
     }
     ends = {key: start + crop_size[key] for key, start in starts.items()}
-    return np.s_[starts['h'] : ends['h'], starts['w'] : ends['w'], :]
+    return np.s_[starts['h']:ends['h'], starts['w']:ends['w'], :]
 
 
 def slice_gauss(
@@ -347,3 +355,210 @@ class DirectoryDataset(Dataset):
 
     def __len__(self):
         return len(self.file_list)
+
+
+def imshow_grid(rows, cols, imageSet):
+    axes = []
+    fig = plt.figure()
+    for a in range(rows * cols):
+        figToPlot = imageSet[a]
+        axes.append(fig.add_subplot(rows, cols, a + 1))
+        subplot_title = ("Subplot" + str(a))
+        axes[-1].set_title(subplot_title)
+        plt.imshow(figToPlot, cmap=cm.gray)
+    fig.tight_layout()
+    plt.show()
+
+
+TRAIN_TMO_DICT_ETRI = {
+    'exposure': PercentileExposure,
+    'reinhard': Reinhard,
+}
+
+
+class PyDicomDataset(Dataset):
+    def __init__(self, path, type_in, type_out, preprocess=True):
+        self.path = path
+        self.img_list = glob.glob(self.path + '/*.' + type_in)
+        path_out = os.path.join(path, 'orig_' + type_out)
+        Path(path_out).mkdir(parents=True, exist_ok=True)
+
+        fname_wi_extension = os.listdir(self.path)
+        fname_wo_extension = [x.split('.')[0] for x in fname_wi_extension]
+        folder = fname_wi_extension[0].split('.')[1]
+        self.fname_list = [folder + '_' + x.split('.')[0] for x in fname_wi_extension]
+
+        self.target_list = []
+        self.input_list = []
+        for img_path, img_fname in zip(self.img_list, self.fname_list):
+
+            # Training data => hospital data from picopack
+            dcminfo = pydicom.read_file(img_path)
+            window_center = 127.5
+            window_width = 255
+            # s = int(dcminfo.RescaleSlope)
+            # b = int(dcminfo.RescaleIntercept)
+            # image = s * dcminfo.pixel_array + b
+
+            # 2022-03-15
+            # this is already uint8 r / g / b file that has a note inside of the image file)
+            image = dcminfo.pixel_array
+            try:
+                image = apply_modality_lut(image, dcminfo)
+                image = apply_voi_lut(image, dcminfo)
+            except:
+                image = image
+
+            # normalization
+            image = np.clip(image, window_center - (window_width / 2), window_center + (window_width / 2))
+            rgb_convert = self.convert_gray2rgb(image)    # for sanity check
+            image_fl = self.convert_hdr(image / window_width) # this is our target hdr image
+            if type_out is not None:
+                tiff.imsave(os.path.join(path_out, img_fname + '.' + type_out), rgb_convert)
+
+            if preprocess:
+                hdr = slice_gauss(image_fl, crop_size=(1000, 1000), precision=(0.1, 1))
+                hdr = cv2.resize(hdr, (256, 256))
+                hdr = map_range(hdr)
+            else:
+                hdr = map_range(image_fl)
+
+            ldr = random_tone_map(hdr, TRAIN_TMO_DICT_ETRI)
+            self.target_list.append(hdr)
+            self.input_list.append(ldr)
+
+        # # Optional for sanity check!
+        # imshowGrid(rows=1, cols=2, imageSet=[self.input_list[0], self.target_list[0]])
+
+        if len(self.target_list) == 0:
+            msg = 'Could not find any files with extensions:\n[{0}]\nin\n{1}'
+            raise RuntimeError(
+                msg.format(', '.join(type_in), path)
+            )
+
+    def __len__(self):
+        return len(self.target_list)
+
+    def __getitem__(self, idx):
+        input = cv2torch(self.input_list[idx])
+        target = cv2torch(self.target_list[idx])
+        return input, target
+
+    def convert_gray2rgb(self, image):
+        width, height = image.shape
+        out = np.empty((width, height, 3), dtype=np.uint8)
+        out[:, :, 0] = image
+        out[:, :, 1] = image
+        out[:, :, 2] = image
+        return out
+
+    def convert_hdr(self, image):
+        width, height = image.shape
+        out = np.empty((width, height, 3), dtype='float32')
+        out[:, :, 0] = image
+        out[:, :, 1] = image
+        out[:, :, 2] = image
+        return out
+
+
+class RawImageDataset(Dataset):
+    def __init__(self, path, type_in, type_out, preprocess=True):
+        self.path = path
+        self.img_list = glob.glob(self.path + '/*.' + type_in)
+        path_out = os.path.join(path, 'orig_' + type_out)
+        Path(path_out).mkdir(parents=True, exist_ok=True)
+
+        fname_wi_extension = os.listdir(self.path)
+        fname_wo_extension = [x.split('.')[0] for x in fname_wi_extension]
+        folder = fname_wi_extension[0].split('.')[1]
+        self.fname_list = [folder + '_' + x.split('.')[0] for x in fname_wi_extension]
+
+        self.pred_list = []
+        for img_path, img_fname in zip(self.img_list, self.fname_list):
+            # Testing data => FOS/GOS data from picopack
+            # Raw format
+            fid = open(img_path, "rb")
+            image = np.fromfile(fid, dtype='uint16', sep="")
+            fid.close()
+            image = np.reshape(image, [1700, 1300])   # do not hard code here...
+            if preprocess:
+                # 01) u*x value: I = I0 exp(-ux), ux = ln ( I0/ (I+eps) )
+                im_log = np.log(self.Izero / (image + sys.float_info.epsilon))
+                # 02) min_max normalization
+                maxV = np.max(im_log)
+                minV = np.min(im_log)
+                im_norm = (im_log - minV) / (maxV - minV)
+            else:
+                im_norm = image / self.Izero
+
+            # 03) scale to 255 uint8
+            im_scaled = im_norm * 255
+            rgb_convert = self.convert_gray2rgb(im_scaled)
+
+            if type_out is not None:
+                tiff.imsave(os.path.join(path_out, img_fname + '.' + type_out), rgb_convert)
+
+            image_fl = self.convert_hdr(im_norm)
+
+            self.pred_list.append(
+                image_fl
+            )
+
+        # # Optional for sanity check!
+        # imshowGrid(rows=1, cols=1, imageSet=self.pred_list[0])
+        if len(self.pred_list) == 0:
+            msg = 'Could not find any files with extensions:\n[{0}]\nin\n{1}'
+            raise RuntimeError(
+                msg.format(', '.join(type_in), path)
+            )
+
+    def __getitem__(self, idx):
+        img = cv2torch(self.pred_list[idx])
+        return img
+
+    def __len__(self):
+        return len(self.pred_list)
+
+    def convert_gray2rgb(self, image):
+        width, height = image.shape
+        out = np.empty((width, height, 3), dtype=np.uint8)
+        out[:, :, 0] = image
+        out[:, :, 1] = image
+        out[:, :, 2] = image
+        return out
+
+    def convert_hdr(self, image):
+        width, height = image.shape
+        out = np.empty((width, height, 3), dtype='float32')
+        out[:, :, 0] = image
+        out[:, :, 1] = image
+        out[:, :, 2] = image
+        return out
+
+
+def imread_raw(file_path, preprocess=True):
+    # Testing data => FOS/GOS data from picopack
+    # Raw format
+    fid = open(file_path, "rb")
+    image = np.fromfile(fid, dtype='uint16', sep="")
+    fid.close()
+    image = np.reshape(image, [1700, 1300])   # do not hard code here...
+    Izero = 16383
+    if preprocess:
+        # 01) u*x value: I = I0 exp(-ux), ux = ln ( I0/ (I+eps) )
+        im_log = np.log(Izero / (image + sys.float_info.epsilon))
+        # 02) min_max normalization
+        maxV = np.max(im_log)
+        minV = np.min(im_log)
+        im_norm = (im_log - minV) / (maxV - minV)
+    else:
+        im_norm = image / Izero
+
+    width, height = image.shape
+    image_fl = np.empty((width, height, 3), dtype='float32')
+    image_fl[:, :, 0] = im_norm
+    image_fl[:, :, 1] = im_norm
+    image_fl[:, :, 2] = im_norm
+    # # Optional for sanity check!
+    # imshowGrid(rows=1, cols=1, imageSet=[image_fl])
+    return image_fl
