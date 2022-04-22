@@ -15,22 +15,24 @@ from pydicom.pixel_data_handlers.util import apply_modality_lut, apply_voi_lut
 import tifffile as tiff
 
 
-def process_path(directory, create=False):
-    directory = os.path.expanduser(directory)
-    directory = os.path.normpath(directory)
-    directory = os.path.abspath(directory)
+def process_path(path, create=False):
+    path = os.path.expanduser(path)
+    path = os.path.normpath(path)
+    path = os.path.abspath(path)
     if create:
         try:
-            os.makedirs(directory)
+            path = Path(path)
+            dir = path.parent if path.suffix else path
+            os.makedirs(dir)
         except:
             pass
-    return directory
+    return str(path)
 
 
-def split_path(directory):
-    directory = process_path(directory)
-    name, ext = os.path.splitext(os.path.basename(directory))
-    return os.path.dirname(directory), name, ext
+def split_path(path):
+    path = process_path(path)
+    name, ext = os.path.splitext(os.path.basename(path))
+    return os.path.dirname(path), name, ext
 
 
 # From torchnet
@@ -559,6 +561,6 @@ def imread_raw(file_path, preprocess=True):
     image_fl[:, :, 0] = im_norm
     image_fl[:, :, 1] = im_norm
     image_fl[:, :, 2] = im_norm
-    # # Optional for sanity check!
-    # imshowGrid(rows=1, cols=1, imageSet=[image_fl])
+    # Optional for sanity check!
+    # imshow_grid(rows=1, cols=1, imageSet=[image_fl])
     return image_fl

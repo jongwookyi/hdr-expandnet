@@ -1,5 +1,6 @@
 import argparse
 import os
+from pathlib import Path
 import numpy as np
 import torch
 import cv2
@@ -18,17 +19,14 @@ from util import (
     imread_raw,
 )
 
+_package_path = Path(__file__).parent.absolute()
+
 
 def get_args():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     arg = parser.add_argument
-    arg('ldr', nargs='*', type=process_path, default=['ldr_input'], help='Ldr image(s)')
-    arg(
-        '--out',
-        type=lambda x: process_path(x, True),
-        default='hdr_output',
-        help='Output location.',
-    )
+    arg('ldr', type=process_path, help='Ldr image or folder having ldr images.')
+    arg('out', type=lambda x: process_path(x, True), help='Output folder or hdr file path.')
     arg(
         '--video',
         type=str2bool,
@@ -78,7 +76,7 @@ def get_args():
     arg(
         '--use_weights',
         type=process_path,
-        default='weights.pth',
+        default=str(_package_path / "weights.pth"),
         help='Weights to use for prediction',
     )
     arg(
@@ -120,19 +118,22 @@ def preprocess(x, opt):
 
 
 def create_name(inp, tag, ext, out, extra_tag):
+    if not os.path.isdir(out):
+        return out
+
     root, name, _ = split_path(inp)
     if extra_tag is not None:
-        tag = '{0}_{1}'.format(tag, extra_tag)
+        tag = f"{tag}_{extra_tag}"
     if out is not None:
         root = out
-    return os.path.join(root, '{0}_{1}.{2}'.format(name, tag, ext))
+    return os.path.join(root, f"{name}_{tag}.{ext}")
 
 
 def create_video(opt):
     if opt.tone_map is None:
         opt.tone_map = 'reinhard'
     net = load_pretrained(opt)
-    video_file = opt.ldr[0]
+    video_file = opt.ldr
     cap_in = cv2.VideoCapture(video_file)
     fps = cap_in.get(cv2.CAP_PROP_FPS)
     width = int(cap_in.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -168,7 +169,7 @@ def create_video(opt):
     out_vid = cv2.VideoWriter(out_vid_name, fourcc, fps, (width, height))
     for i, pred in enumerate(smooth_predictions):
         perc = (i + 1) * 100 / n_frames
-        print('\rWriting video: {0:.2f}%'.format(perc), end='')
+        print(f'\rWriting video: {perc:.2f}%', end='')
         tmo_img = tone_map(
             pred, opt.tone_map, **create_tmo_param_from_args(opt)
         )
@@ -181,13 +182,15 @@ def create_video(opt):
 def create_images(opt):
     #  preprocess = create_preprocess(opt)
     net = load_pretrained(opt)
-    if (len(opt.ldr) == 1) and os.path.isdir(opt.ldr[0]):
+    if os.path.isdir(opt.ldr):
         # Treat this as a directory of ldr images
         opt.ldr = [
-            os.path.join(opt.ldr[0], f)
-            for f in os.listdir(opt.ldr[0])
+            os.path.join(opt.ldr, f)
+            for f in os.listdir(opt.ldr)
             if any(f.lower().endswith(x) for x in opt.ldr_extensions)
         ]
+    else:
+        opt.ldr = [opt.ldr]
     print("LDR input:", opt.ldr)
     for ldr_file in opt.ldr:
         input_extension = os.path.splitext(ldr_file)[-1].lower()
@@ -198,7 +201,7 @@ def create_images(opt):
                 ldr_file, flags=cv2.IMREAD_ANYDEPTH + cv2.IMREAD_COLOR
             )
         if loaded is None:
-            print('Could not load {0}'.format(ldr_file))
+            print(f'Could not load {ldr_file}')
             continue
         ldr_input = preprocess(loaded, opt)
         if opt.resize:
@@ -227,7 +230,7 @@ def create_images(opt):
             )
             out_name = create_name(
                 ldr_file,
-                'prediction_{0}'.format(opt.tone_map),
+                f'prediction_{opt.tone_map}',
                 'jpg',
                 opt.out,
                 opt.tag,
