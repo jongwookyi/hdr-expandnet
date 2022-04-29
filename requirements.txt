@@ -1,0 +1,44 @@
+altgraph @ file:///home/conda/feedstock_root/build_artifacts/altgraph_1632761154050/work
+brotlipy==0.7.0
+certifi==2021.10.8
+cffi @ file:///C:/ci_310/cffi_1642682485096/work
+charset-normalizer @ file:///tmp/build/80754af9/charset-normalizer_1630003229654/work
+cryptography @ file:///C:/ci/cryptography_1639414720302/work
+cycler @ file:///tmp/build/80754af9/cycler_1637851556182/work
+Cython @ file:///C:/ci/cython_1647850559892/work
+fonttools==4.25.0
+future @ file:///D:/bld/future_1635819693853/work
+idna @ file:///tmp/build/80754af9/idna_1637925883363/work
+imagecodecs @ file:///C:/ci/imagecodecs_1635511087451/work
+kiwisolver @ file:///C:/ci/kiwisolver_1644962577370/work
+macholib @ file:///home/conda/feedstock_root/build_artifacts/macholib_1595268426755/work
+matplotlib @ file:///C:/ci/matplotlib-suite_1634667159685/work
+mkl-fft==1.3.1
+mkl-random @ file:///C:/ci/mkl_random_1626186184308/work
+mkl-service==2.4.0
+munkres==1.1.4
+numpy==1.16.6
+pefile @ file:///home/conda/feedstock_root/build_artifacts/pefile_1630688703091/work
+Pillow==9.0.1
+pycparser @ file:///tmp/build/80754af9/pycparser_1636541352034/work
+pydicom @ file:///home/conda/feedstock_root/build_artifacts/pydicom_1633185052031/work
+pyinstaller @ file:///D:/bld/pyinstaller_1646539232841/work
+pyinstaller-hooks-contrib @ file:///home/conda/feedstock_root/build_artifacts/pyinstaller-hooks-contrib_1648156627687/work
+pyOpenSSL @ file:///opt/conda/conda-bld/pyopenssl_1643788558760/work
+pyparsing @ file:///tmp/build/80754af9/pyparsing_1635766073266/work
+PySocks @ file:///C:/ci/pysocks_1605307512533/work
+python-dateutil @ file:///tmp/build/80754af9/python-dateutil_1626374649649/work
+pywin32==303
+pywin32-ctypes @ file:///D:/bld/pywin32-ctypes_1635826692159/work
+requests @ file:///opt/conda/conda-bld/requests_1641824580448/work
+sip==4.19.13
+six @ file:///tmp/build/80754af9/six_1644875935023/work
+tifffile @ file:///tmp/build/80754af9/tifffile_1627275862826/work
+torch==1.11.0
+torchaudio==0.11.0
+torchvision==0.12.0
+tornado @ file:///C:/ci/tornado_1606924294691/work
+typing_extensions @ file:///opt/conda/conda-bld/typing_extensions_1647553014482/work
+urllib3 @ file:///opt/conda/conda-bld/urllib3_1643638302206/work
+win-inet-pton @ file:///C:/ci/win_inet_pton_1605306162074/work
+wincertstore==0.2
